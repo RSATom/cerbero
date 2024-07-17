@@ -13,7 +13,7 @@ class Recipe(recipe.Recipe):
     name = 'gst-plugins-rs'
     version = '0.12.11'
     stype = SourceType.GIT
-    remotes = {'origin': 'https://gitlab.freedesktop.org/gstreamer/%(name)s.git'}
+    remotes = {'origin': 'https://github.com/RSATom/%(name)s.git'}
     if GStreamer.tagged_for_release:
         commit = f'gstreamer-{GStreamer.version}'
     else:
