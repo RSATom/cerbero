@@ -5,19 +5,20 @@ from cerbero.utils import messages as m
 from cerbero.utils import shell, determine_num_cargo_jobs, determine_total_ram
 from pathlib import Path
 import re
+import shlex
 import shutil
 import tempfile
 
 
 class Recipe(recipe.Recipe):
     name = 'gst-plugins-rs'
-    version = '0.12.11'
+    version = '0.14.0-alpha.1'
     stype = SourceType.GIT
     remotes = {'origin': 'https://gitlab.freedesktop.org/gstreamer/%(name)s.git'}
     if GStreamer.tagged_for_release:
         commit = f'gstreamer-{GStreamer.version}'
     else:
-        commit = 'origin/0.12'
+        commit = 'origin/main'
     # Each plugin uses one or more of these licenses.
     licenses = [{
         License.Apachev2: ['LICENSE-APACHE'],
@@ -46,6 +47,7 @@ class Recipe(recipe.Recipe):
         'mp4',
         'ndi',
         'onvif',
+        'quinn',
         'rav1e',
         'regex',
         'reqwest',
@@ -69,12 +71,9 @@ class Recipe(recipe.Recipe):
     if determine_num_cargo_jobs() == 1:
         allow_parallel_build = False
         allow_universal_parallel_build = False
-    elif determine_total_ram() <= (32 << 30):
-        # gst-plugins-rs peaks at ~17GB per architectural build.
-        # Let's assume that > 32GB is enough, but that can be upped
-        # afterwards. Currently a 32GB box freezes when trying the
-        # universal build, as soon as it reaches the gstrswebrtc and
-        # gstaws crates.
+    elif determine_total_ram() <= (64 << 30):
+        # gst-plugins-rs has bloated to the point where a 64GB machine OOMs if
+        # too many architectures are built in parallel.
         allow_universal_parallel_build = False
 
     # Needed for openssl
@@ -112,8 +111,8 @@ class Recipe(recipe.Recipe):
         plugin_files = {
             'core': ['fallbackswitch', 'livesync', 'rsinter', 'rstracers',
                      'threadshare', 'togglerecord'],
-            'net': ['aws', 'hlssink3', 'ndi', 'rsonvif', 'raptorq', 'reqwest',
-                    'rsrtp', 'rsrtsp', 'webrtchttp', 'rswebrtc'],
+            'net': ['aws', 'hlssink3', 'ndi', 'quinn', 'rsonvif', 'raptorq',
+                    'reqwest', 'rsrtp', 'rsrtsp', 'webrtchttp', 'rswebrtc'],
             'effects': ['rsaudiofx', 'rsvideofx'],
             'codecs': ['cdg', 'claxon', 'dav1d', 'rsclosedcaption', 'ffv1',
                        'fmp4', 'mp4', 'gif', 'hsv', 'lewton', 'rav1e', 'json',
@@ -135,6 +134,17 @@ class Recipe(recipe.Recipe):
         for each in components:
             self.cargo_features.append(f'gst{each}/v1_22')
         self.cargo_features.append('gst-plugin-webrtc/v1_22')
+
+        # The LIBRARY_PATH setting affects all invocations of GCC underneath
+        # Cargo, in particular those that link build scripts (that are meant to
+        # run on the host machine, not through wine).
+        # When creating these, a value for LIBRARY_PATH present will cause
+        # cross-mingw GCC to prefer libpthread.a for MinGW-w64 over the system
+        # libpthread, and hell breaks loose.
+        if self.config.target_platform == Platform.WINDOWS and \
+            self.config.platform != self.config.target_platform:
+            self.set_env('LDFLAGS')
+            self.set_env('LIBRARY_PATH')
 
     async def configure(self):
         # Check that the Cargo.toml version matches the recipe version
