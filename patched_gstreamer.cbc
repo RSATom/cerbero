@@ -1,0 +1,2 @@
+recipes_remotes = {'gstreamer-1.0': {'github': 'https://github.com/RSATom/gstreamer.git'}}
+recipes_commits = {'gstreamer-1.0': 'github/1.28_patched'}
